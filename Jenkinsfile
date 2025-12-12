@@ -24,17 +24,30 @@ pipeline {
     stage('test') {
       steps {
         script {
-          if (env.USE_DOCKER) {
-            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'pip install pytest >/dev/null 2>&1 || true; python -m unittest discover -v'"
-            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'echo test-run: ${env.BUILD_TS} > test-log.txt; cp test-log.txt /ws/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt'"
-          } else {
-            sh "python -m unittest discover -v"
-            sh "echo test-run: ${env.BUILD_TS} > test-log.txt"
-            sh "cp test-log.txt ${env.WORKSPACE}/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt"
-          }
+          sh '''
+          cd "${WORKSPACE}"
+          if [ -d "devops/tests" ]; then
+            TEST_DIR="devops/tests"
+          elif [ -d "tests" ]; then
+            TEST_DIR="tests"
+          else
+            echo "ERROR: no tests directory found" >&2
+            exit 1
+          fi
+          python -m unittest discover -v -s "${TEST_DIR}" -p "test_*.py" > unittest_output.txt 2>&1 || true
+          if grep -q "Ran 0 tests" unittest_output.txt; then
+            cat unittest_output.txt
+            echo "ERROR: No unit tests found (Ran 0 tests)" >&2
+            exit 1
+          fi
+          cat unittest_output.txt
+          echo "test-run: $(date)" > test-log.txt
+          cp test-log.txt ${WORKSPACE}/test-log-${BUILD_ID}-${BUILD_TS}.txt
+          '''
         }
       }
     }
+
     stage('analyse-routes') {
       steps {
         script {

@@ -25,12 +25,12 @@ pipeline {
       steps {
         script {
           if (env.USE_DOCKER) {
-            sh "docker run --rm -v ${WORKSPACE}:/ws -w /ws python:3.11 sh -c \"pip install pytest >/dev/null 2>&1 || true; python -m unittest discover -v\""
-            sh "docker run --rm -v ${WORKSPACE}:/ws -w /ws python:3.11 sh -c \"echo test-run: \\$(date) > test-log.txt; cp test-log.txt /ws/test-log-${BUILD_ID}-${BUILD_TS}.txt\""
+            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'pip install pytest >/dev/null 2>&1 || true; python -m unittest discover -v'"
+            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'echo test-run: ${env.BUILD_TS} > test-log.txt; cp test-log.txt /ws/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt'"
           } else {
             sh "python -m unittest discover -v"
-            sh "echo test-run: \\$(date) > test-log.txt"
-            sh "cp test-log.txt ${WORKSPACE}/test-log-${BUILD_ID}-${BUILD_TS}.txt"
+            sh "echo test-run: ${env.BUILD_TS} > test-log.txt"
+            sh "cp test-log.txt ${env.WORKSPACE}/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt"
           }
         }
       }
@@ -39,21 +39,21 @@ pipeline {
       steps {
         script {
           if (env.USE_DOCKER) {
-            sh "docker run --rm -v ${WORKSPACE}:/ws -w /ws python:3.11 sh -c \"python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${BUILD_ID}-${BUILD_TS}.txt\""
+            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt'"
           } else {
             sh "python analyse_routes.py > route-report.txt || true"
-            sh "cp route-report.txt ${WORKSPACE}/route-report-${BUILD_ID}-${BUILD_TS}.txt"
+            sh "cp route-report.txt ${env.WORKSPACE}/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt"
           }
         }
       }
     }
     stage('archive') {
       steps {
-        sh "mkdir -p ${WORKSPACE}/yatritransit-artifacts-${BUILD_TS}"
-        sh "cp ${WORKSPACE}/test-log-${BUILD_ID}-${BUILD_TS}.txt ${WORKSPACE}/yatritransit-artifacts-${BUILD_TS}/ || true"
-        sh "cp ${WORKSPACE}/route-report-${BUILD_ID}-${BUILD_TS}.txt ${WORKSPACE}/yatritransit-artifacts-${BUILD_TS}/ || true"
-        sh "echo build finished at \\$(date) > ${WORKSPACE}/yatritransit-artifacts-${BUILD_TS}/build-summary-${BUILD_ID}-${BUILD_TS}.txt"
-        archiveArtifacts artifacts: "yatritransit-artifacts-${BUILD_TS}/**", fingerprint: true
+        sh "mkdir -p ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}"
+        sh "cp ${env.WORKSPACE}/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/ || true"
+        sh "cp ${env.WORKSPACE}/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/ || true"
+        sh "echo build finished at ${env.BUILD_TS} > ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/build-summary-${env.BUILD_ID}-${env.BUILD_TS}.txt"
+        archiveArtifacts artifacts: "yatritransit-artifacts-${env.BUILD_TS}/**", fingerprint: true
       }
     }
   }

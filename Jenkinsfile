@@ -27,27 +27,31 @@ pipeline {
     stage('test') {
       steps {
         script {
-          sh """
-          cd "${env.WORKSPACE}"
-          if [ -d "devops/tests" ]; then
-            TEST_DIR="devops/tests"
-          elif [ -d "tests" ]; then
-            TEST_DIR="tests"
-          else
-            echo "ERROR: no tests directory found" >&2
-            exit 1
-          fi
-          python -m unittest discover -v -s "\$TEST_DIR" -p "test_*.py" > unittest_output.txt 2>&1 || true
-          if grep -q "Ran 0 tests" unittest_output.txt; then
-            cat unittest_output.txt
-            echo "ERROR: No unit tests found (Ran 0 tests)" >&2
-            exit 1
-          fi
-          cat unittest_output.txt
-          echo "test-run: $(date)" > test-log.txt
-          cp test-log.txt /tmp/yatritransit-builds/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt
-          cp test-log.txt ${env.WORKSPACE}/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt
-          """
+          def ws = env.WORKSPACE
+          def bid = env.BUILD_ID
+          def bts = env.BUILD_TS
+          def script =
+            '''cd "''' + ws + '''"
+if [ -d "devops/tests" ]; then
+  TEST_DIR="devops/tests"
+elif [ -d "tests" ]; then
+  TEST_DIR="tests"
+else
+  echo "ERROR: no tests directory found" >&2
+  exit 1
+fi
+python -m unittest discover -v -s "$TEST_DIR" -p "test_*.py" > unittest_output.txt 2>&1 || true
+if grep -q "Ran 0 tests" unittest_output.txt; then
+  cat unittest_output.txt
+  echo "ERROR: No unit tests found (Ran 0 tests)" >&2
+  exit 1
+fi
+cat unittest_output.txt
+echo "test-run: $(date)" > test-log.txt
+cp test-log.txt /tmp/yatritransit-builds/test-log-''' + bid + '-' + bts + '''.txt
+cp test-log.txt "''' + ws + '''/test-log-''' + bid + '-' + bts + '''.txt"
+'''
+          sh script
         }
       }
     }
@@ -55,15 +59,19 @@ pipeline {
     stage('analyse-routes') {
       steps {
         script {
+          def ws = env.WORKSPACE
+          def bid = env.BUILD_ID
+          def bts = env.BUILD_TS
           if (env.USE_DOCKER) {
-            sh "docker run --rm -v ${env.WORKSPACE}:/ws -w /ws python:3.11 sh -c 'python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt'"
+            sh "docker run --rm -v ${ws}:/ws -w /ws python:3.11 sh -c 'python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${bid}-${bts}.txt'"
           } else {
-            sh """
-            cd "${env.WORKSPACE}"
-            python analyse_routes.py > route-report.txt || true
-            cp route-report.txt /tmp/yatritransit-builds/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt
-            cp route-report.txt ${env.WORKSPACE}/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt
-            """
+            def script =
+              '''cd "''' + ws + '''"
+python analyse_routes.py > route-report.txt || true
+cp route-report.txt /tmp/yatritransit-builds/route-report-''' + bid + '-' + bts + '''.txt
+cp route-report.txt "''' + ws + '''/route-report-''' + bid + '-' + bts + '''.txt"
+'''
+            sh script
           }
         }
       }
@@ -72,11 +80,13 @@ pipeline {
     stage('archive') {
       steps {
         script {
-          sh "mkdir -p ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}"
-          sh "cp ${env.WORKSPACE}/test-log-${env.BUILD_ID}-${env.BUILD_TS}.txt ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/ || true"
-          sh "cp ${env.WORKSPACE}/route-report-${env.BUILD_ID}-${env.BUILD_TS}.txt ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/ || true"
-          sh "echo build finished at ${env.BUILD_TS} > ${env.WORKSPACE}/yatritransit-artifacts-${env.BUILD_TS}/build-summary-${env.BUILD_ID}-${env.BUILD_TS}.txt"
-          archiveArtifacts artifacts: "yatritransit-artifacts-${env.BUILD_TS}/**", fingerprint: true
+          def ws = env.WORKSPACE
+          def bts = env.BUILD_TS
+          sh "mkdir -p '${ws}/yatritransit-artifacts-${bts}'"
+          sh "cp '${ws}/test-log-${env.BUILD_ID}-${bts}.txt' '${ws}/yatritransit-artifacts-${bts}/' || true"
+          sh "cp '${ws}/route-report-${env.BUILD_ID}-${bts}.txt' '${ws}/yatritransit-artifacts-${bts}/' || true"
+          sh "echo build finished at ${bts} > '${ws}/yatritransit-artifacts-${bts}/build-summary-${env.BUILD_ID}-${bts}.txt'"
+          archiveArtifacts artifacts: "yatritransit-artifacts-${bts}/**", fingerprint: true
         }
       }
     }

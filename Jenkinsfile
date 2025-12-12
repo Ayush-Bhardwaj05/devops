@@ -1,8 +1,5 @@
 pipeline {
   agent any
-  environment {
-    BUILD_TS = ""
-  }
   stages {
     stage('prepare') {
       steps {
@@ -17,13 +14,11 @@ pipeline {
           } else {
             env.USE_DOCKER = ""
           }
-          def bts = sh(script: "date +%Y%m%d%H%M%S", returnStdout: true).trim()
-          if (!bts) {
-            bts = new Date().format('yyyyMMddHHmmss')
-          }
-          env.BUILD_TS = bts
+          sh "mkdir -p ${env.WORKSPACE} || true"
+          sh "date +%Y%m%d%H%M%S > ${env.WORKSPACE}/build_ts.txt"
+          def bts = sh(script: "cat ${env.WORKSPACE}/build_ts.txt", returnStdout: true).trim()
+          echo "DEBUG: bts=${bts}, BUILD_ID=${env.BUILD_ID}, USE_DOCKER=${env.USE_DOCKER}"
           sh "mkdir -p /tmp/yatritransit-builds || true"
-          echo "DEBUG: BUILD_TS=${env.BUILD_TS}, BUILD_ID=${env.BUILD_ID}, USE_DOCKER=${env.USE_DOCKER}"
         }
       }
     }
@@ -32,10 +27,9 @@ pipeline {
       steps {
         script {
           def ws = env.WORKSPACE
-          def bid = env.BUILD_ID
-          def bts = env.BUILD_TS
           def script =
             'cd "' + ws + '"\n' +
+            'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S)\n' +
             'if [ -d "devops/tests" ]; then\n  TEST_DIR="devops/tests"\n' +
             'elif [ -d "tests" ]; then\n  TEST_DIR="tests"\n' +
             'else\n  echo "ERROR: no tests directory found" >&2\n  exit 1\nfi\n' +
@@ -43,8 +37,8 @@ pipeline {
             'if grep -q "Ran 0 tests" unittest_output.txt; then\n  cat unittest_output.txt\n  echo "ERROR: No unit tests found (Ran 0 tests)" >&2\n  exit 1\nfi\n' +
             'cat unittest_output.txt\n' +
             'echo "test-run: $(date)" > test-log.txt\n' +
-            'cp test-log.txt /tmp/yatritransit-builds/test-log-' + bid + '-' + bts + '.txt\n' +
-            'cp test-log.txt "' + ws + '/test-log-' + bid + '-' + bts + '.txt"\n'
+            'cp test-log.txt /tmp/yatritransit-builds/test-log-${BUILD_ID}-$bts.txt\n' +
+            'cp test-log.txt "' + ws + '/test-log-${BUILD_ID}-$bts.txt"\n'
           sh script
         }
       }
@@ -54,16 +48,15 @@ pipeline {
       steps {
         script {
           def ws = env.WORKSPACE
-          def bid = env.BUILD_ID
-          def bts = env.BUILD_TS
           if (env.USE_DOCKER) {
-            sh "docker run --rm -v ${ws}:/ws -w /ws python:3.11 sh -c 'python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${bid}-${bts}.txt'"
+            sh "docker run --rm -v ${ws}:/ws -w /ws python:3.11 sh -c 'bts=\\$(cat /ws/build_ts.txt 2>/dev/null || date +%Y%m%d%H%M%S); python analyse_routes.py > route-report.txt || true; cp route-report.txt /ws/route-report-${BUILD_ID}-\\$bts.txt'"
           } else {
             def s =
               'cd "' + ws + '"\n' +
+              'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S)\n' +
               'python analyse_routes.py > route-report.txt || true\n' +
-              'cp route-report.txt /tmp/yatritransit-builds/route-report-' + bid + '-' + bts + '.txt\n' +
-              'cp route-report.txt "' + ws + '/route-report-' + bid + '-' + bts + '.txt"\n'
+              'cp route-report.txt /tmp/yatritransit-builds/route-report-${BUILD_ID}-$bts.txt\n' +
+              'cp route-report.txt "' + ws + '/route-report-${BUILD_ID}-$bts.txt"\n'
             sh s
           }
         }
@@ -74,12 +67,13 @@ pipeline {
       steps {
         script {
           def ws = env.WORKSPACE
-          def bts = env.BUILD_TS
-          sh "mkdir -p '${ws}/yatritransit-artifacts-${bts}'"
-          sh "cp '${ws}/test-log-${env.BUILD_ID}-${bts}.txt' '${ws}/yatritransit-artifacts-${bts}/' || true"
-          sh "cp '${ws}/route-report-${env.BUILD_ID}-${bts}.txt' '${ws}/yatritransit-artifacts-${bts}/' || true"
-          sh "echo build finished at ${bts} > '${ws}/yatritransit-artifacts-${bts}/build-summary-${env.BUILD_ID}-${bts}.txt'"
-          archiveArtifacts artifacts: "yatritransit-artifacts-${bts}/**", fingerprint: true
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && mkdir -p "' + ws + '/yatritransit-artifacts-$bts"'
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && cp "' + ws + '/test-log-${BUILD_ID}-$bts.txt" "' + ws + '/yatritransit-artifacts-$bts/" || true'
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && cp "' + ws + '/route-report-${BUILD_ID}-$bts.txt" "' + ws + '/yatritransit-artifacts-$bts/" || true'
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && echo build finished at $bts > "' + ws + '/yatritransit-artifacts-$bts/build-summary-${BUILD_ID}-$bts.txt"'
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && ls -la "' + ws + '/yatritransit-artifacts-$bts" || true'
+          sh 'bts=$(cat "' + ws + '/build_ts.txt" 2>/dev/null || date +%Y%m%d%H%M%S) && echo "Archiving artifacts for build ${BUILD_ID} with ts=$bts"'
+          archiveArtifacts artifacts: "${ws}/yatritransit-artifacts-*/**", fingerprint: true
         }
       }
     }
@@ -87,10 +81,11 @@ pipeline {
 
   post {
     always {
-      echo "POST DEBUG: BUILD_TS=${env.BUILD_TS}, BUILD_ID=${env.BUILD_ID}"
-    }
-    failure {
-      echo "Build failed. Check console output."
+      script {
+        def ws = env.WORKSPACE
+        def bts = sh(script: "cat ${ws}/build_ts.txt 2>/dev/null || echo none", returnStdout: true).trim()
+        echo "POST DEBUG: build_ts_file=${ws}/build_ts.txt, bts=${bts}, BUILD_ID=${env.BUILD_ID}"
+      }
     }
   }
 }
